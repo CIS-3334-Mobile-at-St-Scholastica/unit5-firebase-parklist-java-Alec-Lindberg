@@ -1,16 +1,16 @@
 package cis3334.java_firebase_parklist.data.model;
 
-/**
- * Represents a park.
- */
 public class Park {
-    private final String id;
-    private final String name;
-    private final String address;
-    private final double latitude;
-    private final double longitude;
+    private String id;
+    private String name;
+    private String address;
+    private double latitude;
+    private double longitude;
 
-    // Constructor to initialize all fields
+    // Required empty constructor for Firestore
+    public Park() { }
+
+    // Full constructor
     public Park(String id, String name, String address, double latitude, double longitude) {
         this.id = id;
         this.name = name;
@@ -19,26 +19,17 @@ public class Park {
         this.longitude = longitude;
     }
 
-    // Getter methods
-    public String getId() {
-        return id;
-    }
+    // Getters
+    public String getId() { return id; }
+    public String getName() { return name; }
+    public String getAddress() { return address; }
+    public double getLatitude() { return latitude; }
+    public double getLongitude() { return longitude; }
 
-    public String getName() {
-        return name;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-
-    public double getLatitude() {
-        return latitude;
-    }
-
-    public double getLongitude() {
-        return longitude;
-    }
-
-    // equals(), hashCode(), and toString() methods are omitted for simplicity.
+    // Setters (needed for Firestore + setId())
+    public void setId(String id) { this.id = id; }
+    public void setName(String name) { this.name = name; }
+    public void setAddress(String address) { this.address = address; }
+    public void setLatitude(double latitude) { this.latitude = latitude; }
+    public void setLongitude(double longitude) { this.longitude = longitude; }
 }

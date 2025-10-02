@@ -1,79 +1,165 @@
 package cis3334.java_firebase_parklist.viewmodel;
 
-import android.util.Log;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
+
+import com.google.firebase.firestore.ListenerRegistration;
+
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
-import cis3334.java_firebase_parklist.data.model.Park; // Ensure this import is correct
+
+import cis3334.java_firebase_parklist.data.firebase.FirebaseService;
+import cis3334.java_firebase_parklist.data.model.Park;
 
 public class ParkViewModel extends ViewModel {
 
-    public final String instanceId = UUID.randomUUID().toString();
+    // ---- Data source ----
+    private final FirebaseService service = new FirebaseService();
 
-    // Internal mutable list for sample data
-    private final ArrayList<Park> _sampleParksList = new ArrayList<>();
+    // ---- UI state ----
+    private final MutableLiveData<List<Park>> parks = new MutableLiveData<>(new ArrayList<>());
+    private final MutableLiveData<Park> selectedPark = new MutableLiveData<>(null);
+    private final MutableLiveData<Boolean> loading = new MutableLiveData<>(false);
+    private final MutableLiveData<String> error = new MutableLiveData<>(null);
 
-    private final MutableLiveData<List<Park>> _parks = new MutableLiveData<>();
-    public LiveData<List<Park>> getParks() {
-        return _parks;
-    }
+    // Expose as immutable LiveData
+    public LiveData<List<Park>> getParks() { return parks; }
+    public LiveData<Park> getSelectedPark() { return selectedPark; }
+    public LiveData<Boolean> getLoading() { return loading; }
+    public LiveData<String> getError() { return error; }
 
-    private final MutableLiveData<Park> _selectedPark = new MutableLiveData<>(null);
-    public LiveData<Park> getSelectedPark() {
-        return _selectedPark;
-    }
+    // Real-time listener (optional)
+    private ListenerRegistration parksListener;
 
-    public ParkViewModel() { // Constructor instead of init block
-        Log.d("ParkViewModel", "Instance created: " + instanceId);
-        // Initialize sample data
-        _sampleParksList.add(new Park("park1", "Jay Cooke State Park", "780 MN-210, Carlton, MN 55718", 46.6577, -92.2175));
-        _sampleParksList.add(new Park("park2", "Gooseberry Falls State Park", "3206 MN-61, Two Harbors, MN 55616", 47.1436, -91.4647));
-        _sampleParksList.add(new Park("park3", "Tettegouche State Park", "5702 MN-61, Silver Bay, MN 55614", 47.3090, -91.2720));
-        loadParks();
-    }
-
+    // ---------------------------
+    // List loading (one-shot)
+    // ---------------------------
     public void loadParks() {
-        // Simulate loading parks (in future, this would be from a FirebaseService equivalent)
-        // Post a new ArrayList to LiveData to ensure observers see it as a new list
-        _parks.setValue(new ArrayList<>(_sampleParksList));
+        loading.setValue(true);
+        service.fetchParks(new FirebaseService.ParksCallback() {
+            @Override public void onSuccess(List<Park> result) {
+                loading.postValue(false);
+                parks.postValue(result);
+            }
+            @Override public void onError(Exception e) {
+                loading.postValue(false);
+                error.postValue(e.getMessage());
+            }
+        });
     }
 
-    public void selectPark(String parkId) {
-        if (parkId == null) {
-            _selectedPark.setValue(null);
-            return;
+    // --------------------------------------
+    // Real-time list subscription (optional)
+    // --------------------------------------
+    public void startObservingParks() {
+        stopObservingParks();
+        loading.setValue(true);
+        parksListener = service.observeParks(new FirebaseService.ParksCallback() {
+            @Override public void onSuccess(List<Park> result) {
+                loading.postValue(false);
+                parks.postValue(result);
+            }
+            @Override public void onError(Exception e) {
+                loading.postValue(false);
+                error.postValue(e.getMessage());
+            }
+        });
+    }
+
+    public void stopObservingParks() {
+        if (parksListener != null) {
+            parksListener.remove();
+            parksListener = null;
         }
-        Park foundPark = null;
-        for (Park park : _sampleParksList) {
-            if (park.getId().equals(parkId)) {
-                foundPark = park;
-                break;
+    }
+
+    // ---------------------------
+    // Detail: select a single park
+    // ---------------------------
+    public void selectPark(String parkId) {
+        // Try to find it in the current list first (fast path)
+        List<Park> current = parks.getValue();
+        if (current != null) {
+            for (Park p : current) {
+                if (p != null && parkId.equals(p.getId())) {
+                    selectedPark.setValue(p);
+                    return;
+                }
             }
         }
-        _selectedPark.setValue(foundPark);
+        // Fallback: fetch from Firestore
+        loading.setValue(true);
+        service.fetchParkById(parkId, new FirebaseService.ParkCallback() {
+            @Override public void onSuccess(Park park) {
+                loading.postValue(false);
+                selectedPark.postValue(park);
+                if (park == null) {
+                    error.postValue("Park not found");
+                }
+            }
+            @Override public void onError(Exception e) {
+                loading.postValue(false);
+                error.postValue(e.getMessage());
+            }
+        });
     }
 
+    public void clearSelectedPark() {
+        selectedPark.setValue(null);
+    }
+
+    // ---------------------------
+    // Create / Update / Delete
+    // ---------------------------
     public void addPark(Park park) {
-        Park newParkWithId;
-        if (park.getId() == null || park.getId().isEmpty()) {
-            // Generate a simple unique ID for sample data if not provided
-            String generatedId = "park" + (_sampleParksList.size() + 1) + (int)(Math.random() * 1000);
-            newParkWithId = new Park(generatedId, park.getName(), park.getAddress(), park.getLatitude(), park.getLongitude());
-        } else {
-            newParkWithId = park;
-        }
-        Log.d("ParkViewModel", "Adding park: " + newParkWithId.getName() + ", Instance: " + instanceId);
-        _sampleParksList.add(newParkWithId);
-        _parks.setValue(new ArrayList<>(_sampleParksList)); // Emit the updated list
-        Log.d("ParkViewModel", "Parks list size after add: " + (_parks.getValue() != null ? _parks.getValue().size() : 0));
+        loading.setValue(true);
+        service.addPark(park, new FirebaseService.VoidCallback() {
+            @Override public void onSuccess() {
+                loading.postValue(false);
+                // If you use one-shot loading:
+                loadParks();
+                // If you use real-time, the listener will update automatically.
+            }
+            @Override public void onError(Exception e) {
+                loading.postValue(false);
+                error.postValue(e.getMessage());
+            }
+        });
+    }
+
+    public void updatePark(Park park) {
+        loading.setValue(true);
+        service.updatePark(park, new FirebaseService.VoidCallback() {
+            @Override public void onSuccess() {
+                loading.postValue(false);
+                loadParks();
+            }
+            @Override public void onError(Exception e) {
+                loading.postValue(false);
+                error.postValue(e.getMessage());
+            }
+        });
+    }
+
+    public void deletePark(String parkId) {
+        loading.setValue(true);
+        service.deletePark(parkId, new FirebaseService.VoidCallback() {
+            @Override public void onSuccess() {
+                loading.postValue(false);
+                loadParks();
+            }
+            @Override public void onError(Exception e) {
+                loading.postValue(false);
+                error.postValue(e.getMessage());
+            }
+        });
     }
 
     @Override
     protected void onCleared() {
+        stopObservingParks();
         super.onCleared();
-        Log.d("ParkViewModel", "Instance cleared: " + instanceId);
     }
 }
+

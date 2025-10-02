@@ -90,7 +90,7 @@ public class ParkListFragment extends Fragment {
             // Make sure the action ID in nav_graph.xml matches
              navController.navigate(R.id.action_parkListFragment_to_addParkFragment);
         });
-
+        parkViewModel.loadParks();
         // If you used a TopAppBar in XML, you might want to set it up here if it needs dynamic content
         // or if it's not part of the activity's main toolbar.
         // For simplicity, the MaterialToolbar in fragment_park_list.xml handles the title.
